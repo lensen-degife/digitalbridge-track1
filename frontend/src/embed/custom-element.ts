@@ -117,13 +117,20 @@ export class DigitalBridgeOnboardingElement extends HTMLElement {
           );
         },
         onLanguageChange: (lang) => {
-          this.setAttribute('lang', lang);
+          if (this.getAttribute('lang') !== lang) {
+            this.setAttribute('lang', lang);
+          }
         },
         onLowLiteracyToggle: (enabled) => {
-          if (enabled) {
-            this.setAttribute('low-literacy', 'true');
-          } else {
-            this.removeAttribute('low-literacy');
+          const current =
+            this.hasAttribute('low-literacy') &&
+            this.getAttribute('low-literacy') !== 'false';
+          if (current !== enabled) {
+            if (enabled) {
+              this.setAttribute('low-literacy', 'true');
+            } else {
+              this.removeAttribute('low-literacy');
+            }
           }
         },
       },

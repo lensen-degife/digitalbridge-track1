@@ -15,6 +15,8 @@ import type {
   LanguageCode,
   EthiopianDateValue,
   ReferralData,
+  EngineEvent,
+  EngineSubscriber,
 } from './types';
 import { getStepsForFlow } from './step-catalog';
 
@@ -34,7 +36,7 @@ export class FormEngine {
 
   private callbacks: EngineCallbacks;
   private slots: EngineSlots;
-  private listeners: Array<(state: EngineState) => void> = [];
+  private listeners: Array<EngineSubscriber> = [];
 
   constructor(options: EngineOptions = {}) {
     this.flow = options.flow || 'onboarding';
@@ -107,19 +109,19 @@ export class FormEngine {
   // State Subscriptions
   // ==========================================
 
-  public subscribe(listener: (state: EngineState) => void): () => void {
+  public subscribe(listener: EngineSubscriber): () => void {
     this.listeners.push(listener);
-    listener(this.getState());
+    listener(this.getState(), { type: 'init' });
     return () => {
       this.listeners = this.listeners.filter((l) => l !== listener);
     };
   }
 
-  private notify(): void {
+  private notify(event?: EngineEvent): void {
     const state = this.getState();
     for (const listener of this.listeners) {
       try {
-        listener(state);
+        listener(state, event);
       } catch (err) {
         console.error('Error in FormEngine subscriber:', err);
       }
@@ -139,21 +141,21 @@ export class FormEngine {
     this.errors = {};
     this.isSubmitted = false;
     this.restoreFromStorage();
-    this.notify();
+    this.notify({ type: 'flow_change' });
   }
 
   public setLanguage(lang: LanguageCode): void {
     if (this.language === lang) return;
     this.language = lang;
     this.callbacks.onLanguageChange?.(lang);
-    this.notify();
+    this.notify({ type: 'language_change' });
   }
 
   public toggleLowLiteracyMode(): void {
     this.lowLiteracyMode = !this.lowLiteracyMode;
     this.callbacks.onLowLiteracyToggle?.(this.lowLiteracyMode);
     this.persistAutoSave();
-    this.notify();
+    this.notify({ type: 'low_literacy_toggle' });
   }
 
   public setLowLiteracyMode(enabled: boolean): void {
@@ -161,7 +163,7 @@ export class FormEngine {
     this.lowLiteracyMode = enabled;
     this.callbacks.onLowLiteracyToggle?.(this.lowLiteracyMode);
     this.persistAutoSave();
-    this.notify();
+    this.notify({ type: 'low_literacy_toggle' });
   }
 
   public setAnswer(stepId: string, value: StepAnswerValue): void {
@@ -171,7 +173,7 @@ export class FormEngine {
       delete this.errors[stepId];
     }
     this.persistAutoSave();
-    this.notify();
+    this.notify({ type: 'answer_change', stepId, value });
   }
 
   public goToNext(): boolean {
@@ -182,7 +184,11 @@ export class FormEngine {
       this.errors[currentStep.stepId] =
         validation.errorMessage || 'Please answer this required question.';
       this.callbacks.onValidationError?.(this.errors);
-      this.notify();
+      this.notify({
+        type: 'validation_error',
+        errors: { ...this.errors },
+        stepId: currentStep.stepId,
+      });
       return false;
     }
 
@@ -192,7 +198,7 @@ export class FormEngine {
       this.currentStepIndex++;
       this.triggerStepChangeHook();
       this.persistAutoSave();
-      this.notify();
+      this.notify({ type: 'step_change', stepId: this.getCurrentStep().stepId });
       return true;
     } else {
       // Last step reached -> Submit
@@ -206,7 +212,7 @@ export class FormEngine {
       this.currentStepIndex--;
       this.triggerStepChangeHook();
       this.persistAutoSave();
-      this.notify();
+      this.notify({ type: 'step_change', stepId: this.getCurrentStep().stepId });
       return true;
     }
     return false;
@@ -217,7 +223,7 @@ export class FormEngine {
       this.currentStepIndex = index;
       this.triggerStepChangeHook();
       this.persistAutoSave();
-      this.notify();
+      this.notify({ type: 'step_change', stepId: this.getCurrentStep().stepId });
       return true;
     }
     return false;
@@ -388,7 +394,7 @@ export class FormEngine {
 
   public async saveAndResumeLater(): Promise<void> {
     this.isSaving = true;
-    this.notify();
+    this.notify({ type: 'save_resume' });
 
     await this.persistAutoSave();
 
@@ -398,7 +404,7 @@ export class FormEngine {
     }
 
     this.isSaving = false;
-    this.notify();
+    this.notify({ type: 'save_resume' });
   }
 
   public async submit(): Promise<boolean> {
@@ -410,13 +416,17 @@ export class FormEngine {
       this.errors[currentStep.stepId] =
         validation.errorMessage || 'Please complete this required question.';
       this.callbacks.onValidationError?.(this.errors);
-      this.notify();
+      this.notify({
+        type: 'validation_error',
+        errors: { ...this.errors },
+        stepId: currentStep.stepId,
+      });
       return false;
     }
 
     this.isSubmitted = true;
     this.lastSavedAt = new Date().toISOString();
-    this.notify();
+    this.notify({ type: 'submit' });
 
     const state = this.getState();
     if (this.callbacks.onSubmit) {
@@ -433,7 +443,7 @@ export class FormEngine {
     this.isSubmitted = false;
     this.lastSavedAt = null;
     this.clearStorage();
-    this.notify();
+    this.notify({ type: 'reset' });
   }
 
   // ==========================================

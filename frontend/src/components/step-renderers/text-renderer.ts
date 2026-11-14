@@ -158,7 +158,7 @@ export function renderTextInput(props: TextRendererProps): HTMLElement {
   if (error) {
     const errorEl = document.createElement('div');
     errorEl.id = errorId;
-    errorEl.className = 'db-hint';
+    errorEl.className = 'db-hint db-inline-error';
     errorEl.style.color = 'var(--db-error)';
     errorEl.style.fontWeight = '600';
     errorEl.textContent = error;
