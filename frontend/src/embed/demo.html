@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DigitalBridge Accessible Form Engine - Host Portal Demo</title>
+  <style>
+    :root {
+      --host-bg: #f1f5f9;
+      --host-card: #ffffff;
+      --host-text: #0f172a;
+      --host-border: #cbd5e1;
+      --host-primary: #1e3a8a;
+    }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background-color: var(--host-bg);
+      color: var(--host-text);
+      margin: 0;
+      padding: 1.5rem 1rem;
+      line-height: 1.5;
+    }
+    .demo-shell {
+      max-width: 56rem;
+      margin: 0 auto;
+    }
+    header.demo-header {
+      background: var(--host-card);
+      padding: 1.5rem;
+      border-radius: 0.75rem;
+      border: 1px solid var(--host-border);
+      margin-bottom: 1.5rem;
+    }
+    h1 {
+      margin: 0 0 0.5rem 0;
+      font-size: 1.75rem;
+      color: var(--host-primary);
+    }
+    p {
+      margin: 0 0 1rem 0;
+      color: #475569;
+    }
+    .control-panel {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+      background: #e2e8f0;
+      padding: 1rem;
+      border-radius: 0.5rem;
+    }
+    .control-btn {
+      min-height: 2.75rem;
+      padding: 0.5rem 1rem;
+      font-size: 0.9375rem;
+      font-weight: 600;
+      border-radius: 0.375rem;
+      border: 1px solid #94a3b8;
+      background: #ffffff;
+      color: var(--host-text);
+      cursor: pointer;
+    }
+    .control-btn:hover {
+      background: #f8fafc;
+      border-color: var(--host-primary);
+    }
+    .control-btn.active {
+      background: var(--host-primary);
+      color: #ffffff;
+      border-color: var(--host-primary);
+    }
+    .embed-card {
+      background: var(--host-card);
+      border-radius: 0.75rem;
+      border: 1px solid var(--host-border);
+      padding: 1rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    .tabs {
+      display: flex;
+      gap: 0.5rem;
+      border-bottom: 2px solid var(--host-border);
+      margin-bottom: 1rem;
+    }
+    .tab-btn {
+      padding: 0.75rem 1.25rem;
+      font-weight: 700;
+      background: none;
+      border: none;
+      border-bottom: 3px solid transparent;
+      cursor: pointer;
+      font-size: 1rem;
+      color: #64748b;
+    }
+    .tab-btn.active {
+      color: var(--host-primary);
+      border-bottom-color: var(--host-primary);
+    }
+    .console-box {
+      background: #0f172a;
+      color: #38bdf8;
+      font-family: monospace;
+      padding: 1rem;
+      border-radius: 0.5rem;
+      max-height: 12rem;
+      overflow-y: auto;
+      font-size: 0.875rem;
+    }
+    .log-line {
+      margin-bottom: 0.25rem;
+    }
+    .log-time {
+      color: #94a3b8;
+    }
+  </style>
+</head>
+<body>
+
+<div class="demo-shell">
+  <header class="demo-header">
+    <h1>🌐 DigitalBridge Drop-In Integration Demo</h1>
+    <p>
+      Host portal testing environment showing how external platforms (UNHCR portals, NGO community hubs, inclusive employers)
+      embed DigitalBridge using either the <strong>&lt;digitalbridge-onboarding&gt; Custom Element</strong> or a <strong>Sandboxed iframe</strong>.
+    </p>
+
+    <div class="control-panel" role="toolbar" aria-label="Host Portal Controls">
+      <span style="font-weight: 700; font-size: 0.9375rem;">Switch Flow:</span>
+      <button class="control-btn active" id="btn-flow-onboarding">Onboarding</button>
+      <button class="control-btn" id="btn-flow-job">Job Apply</button>
+      <button class="control-btn" id="btn-flow-employer">Employer Accommodation</button>
+
+      <span style="margin-left: 0.75rem; font-weight: 700; font-size: 0.9375rem;">Language:</span>
+      <button class="control-btn" id="btn-lang-en">English</button>
+      <button class="control-btn" id="btn-lang-am">አማርኛ (Amharic)</button>
+
+      <span style="margin-left: 0.75rem; font-weight: 700; font-size: 0.9375rem;">Mode:</span>
+      <button class="control-btn" id="btn-toggle-lowlit">Toggle Low-Literacy</button>
+    </div>
+  </header>
+
+  <section class="embed-card">
+    <div class="tabs" role="tablist">
+      <button class="tab-btn active" id="tab-element" role="tab" aria-selected="true">
+        Approach 1: Custom Element (&lt;digitalbridge-onboarding&gt;)
+      </button>
+      <button class="tab-btn" id="tab-iframe" role="tab" aria-selected="false">
+        Approach 2: Sandboxed iframe Embed
+      </button>
+    </div>
+
+    <!-- Container for Custom Element -->
+    <div id="element-view">
+      <digitalbridge-onboarding
+        id="onboarding-widget"
+        flow="onboarding"
+        lang="en">
+      </digitalbridge-onboarding>
+    </div>
+
+    <!-- Container for Iframe Embed -->
+    <div id="iframe-view" style="display: none;">
+      <div id="iframe-container"></div>
+    </div>
+  </section>
+
+  <section class="embed-card">
+    <h2 style="font-size: 1.125rem; margin-top: 0;">📡 Host Event Stream (Real-Time Telemetry)</h2>
+    <div class="console-box" id="event-log">
+      <div class="log-line"><span class="log-time">[System]</span> Host portal initialized. Ready to receive events.</div>
+    </div>
+  </section>
+</div>
+
+<!-- Bundle script will be imported here in runtime -->
+<script type="module">
+  // Logger utility
+  const logBox = document.getElementById('event-log');
+  function logEvent(name, detail) {
+    const time = new Date().toLocaleTimeString();
+    const line = document.createElement('div');
+    line.className = 'log-line';
+    line.innerHTML = `<span class="log-time">[${time}]</span> <strong>${name}</strong>: ${JSON.stringify(detail)}`;
+    logBox.prepend(line);
+  }
+
+  // Hook Custom Element events
+  const widget = document.getElementById('onboarding-widget');
+  widget.addEventListener('digitalbridge-step', (e) => logEvent('Step Change (Custom Element)', e.detail));
+  widget.addEventListener('digitalbridge-save', (e) => logEvent('Auto-Save (Custom Element)', e.detail));
+  widget.addEventListener('digitalbridge-complete', (e) => logEvent('Form Complete (Custom Element)', e.detail));
+
+  // Flow switchers
+  document.getElementById('btn-flow-onboarding').addEventListener('click', () => {
+    widget.setAttribute('flow', 'onboarding');
+    logEvent('Host Action', { flow: 'onboarding' });
+  });
+  document.getElementById('btn-flow-job').addEventListener('click', () => {
+    widget.setAttribute('flow', 'job_apply');
+    logEvent('Host Action', { flow: 'job_apply' });
+  });
+  document.getElementById('btn-flow-employer').addEventListener('click', () => {
+    widget.setAttribute('flow', 'employer_accommodation');
+    logEvent('Host Action', { flow: 'employer_accommodation' });
+  });
+
+  // Language switchers
+  document.getElementById('btn-lang-en').addEventListener('click', () => {
+    widget.setAttribute('lang', 'en');
+    logEvent('Host Action', { lang: 'en' });
+  });
+  document.getElementById('btn-lang-am').addEventListener('click', () => {
+    widget.setAttribute('lang', 'am');
+    logEvent('Host Action', { lang: 'am' });
+  });
+
+  // Low literacy switcher
+  document.getElementById('btn-toggle-lowlit').addEventListener('click', () => {
+    const isLow = widget.hasAttribute('low-literacy');
+    if (isLow) {
+      widget.removeAttribute('low-literacy');
+      logEvent('Host Action', { lowLiteracy: false });
+    } else {
+      widget.setAttribute('low-literacy', 'true');
+      logEvent('Host Action', { lowLiteracy: true });
+    }
+  });
+
+  // Tab switching between Custom Element and Iframe
+  const tabElement = document.getElementById('tab-element');
+  const tabIframe = document.getElementById('tab-iframe');
+  const viewElement = document.getElementById('element-view');
+  const viewIframe = document.getElementById('iframe-view');
+
+  tabElement.addEventListener('click', () => {
+    tabElement.classList.add('active');
+    tabElement.setAttribute('aria-selected', 'true');
+    tabIframe.classList.remove('active');
+    tabIframe.setAttribute('aria-selected', 'false');
+    viewElement.style.display = 'block';
+    viewIframe.style.display = 'none';
+  });
+
+  tabIframe.addEventListener('click', () => {
+    tabIframe.classList.add('active');
+    tabIframe.setAttribute('aria-selected', 'true');
+    tabElement.classList.remove('active');
+    tabElement.setAttribute('aria-selected', 'false');
+    viewElement.style.display = 'none';
+    viewIframe.style.display = 'block';
+  });
+</script>
+
+</body>
+</html>
