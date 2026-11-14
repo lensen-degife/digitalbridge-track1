@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DigitalBridge Accessible Form Engine - Dev Environment</title>
+  <style>
+    :root {
+      --dev-bg: #f8fafc;
+      --dev-surface: #ffffff;
+      --dev-primary: #1e3a8a;
+      --dev-border: #cbd5e1;
+      --dev-text: #0f172a;
+    }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: var(--dev-bg);
+      color: var(--dev-text);
+      margin: 0;
+      padding: 1.5rem 1rem;
+      line-height: 1.5;
+    }
+    .dev-container {
+      max-width: 52rem;
+      margin: 0 auto;
+    }
+    .dev-toolbar {
+      background: var(--dev-surface);
+      border: 2px solid var(--dev-border);
+      border-radius: 0.75rem;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+    .dev-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--dev-primary);
+      margin: 0 0 0.75rem 0;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .dev-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+    }
+    .dev-group-label {
+      font-size: 0.875rem;
+      font-weight: 700;
+      color: #475569;
+      margin-right: 0.25rem;
+    }
+    .dev-btn {
+      min-height: 2.5rem;
+      padding: 0.375rem 0.875rem;
+      font-size: 0.875rem;
+      font-weight: 600;
+      border: 2px solid var(--dev-border);
+      border-radius: 0.375rem;
+      background: #ffffff;
+      color: var(--dev-text);
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    .dev-btn:hover {
+      border-color: var(--dev-primary);
+      background: #eff6ff;
+    }
+    .dev-btn.active {
+      background: var(--dev-primary);
+      color: #ffffff;
+      border-color: var(--dev-primary);
+    }
+    .dev-divider {
+      width: 1px;
+      height: 1.75rem;
+      background: var(--dev-border);
+      margin: 0 0.5rem;
+    }
+    .dev-mount-card {
+      background: var(--dev-surface);
+      border: 2px solid var(--dev-border);
+      border-radius: 0.75rem;
+      padding: 0.5rem;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+    .dev-log {
+      margin-top: 1rem;
+      padding: 0.75rem 1rem;
+      background: #0f172a;
+      color: #38bdf8;
+      font-family: monospace;
+      font-size: 0.8125rem;
+      border-radius: 0.5rem;
+      max-height: 8rem;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+
+<div class="dev-container">
+  <header class="dev-toolbar" role="toolbar" aria-label="DigitalBridge Dev Controls">
+    <div class="dev-title">
+      <span>🌐</span> DigitalBridge Dev Environment &amp; Component Mount
+    </div>
+    <div class="dev-actions">
+      <span class="dev-group-label">Flow:</span>
+      <button type="button" class="dev-btn active" id="btn-flow-onboarding">Onboarding</button>
+      <button type="button" class="dev-btn" id="btn-flow-job">Job Apply</button>
+      <button type="button" class="dev-btn" id="btn-flow-employer">Employer Accommodation</button>
+
+      <div class="dev-divider" aria-hidden="true"></div>
+
+      <span class="dev-group-label">Lang:</span>
+      <button type="button" class="dev-btn active" id="btn-lang-en">English</button>
+      <button type="button" class="dev-btn" id="btn-lang-am">አማርኛ</button>
+
+      <div class="dev-divider" aria-hidden="true"></div>
+
+      <button type="button" class="dev-btn" id="btn-toggle-lowlit">Low-Literacy Mode: Off</button>
+    </div>
+  </header>
+
+  <main class="dev-mount-card">
+    <!-- Web Component Drop-In -->
+    <digitalbridge-onboarding
+      id="onboarding-element"
+      flow="onboarding"
+      lang="en">
+    </digitalbridge-onboarding>
+  </main>
+
+  <aside class="dev-log" id="dev-event-log" aria-label="Dev Event Log">
+    <div>[System] Dev environment ready. Listening for component events...</div>
+  </aside>
+</div>
+
+<!-- Entry script importing web component and embed engine -->
+<script type="module" src="/src/embed/index.ts"></script>
+
+<script type="module">
+  const el = document.getElementById('onboarding-element');
+  const logEl = document.getElementById('dev-event-log');
+
+  function log(name, detail) {
+    const time = new Date().toLocaleTimeString();
+    const row = document.createElement('div');
+    row.textContent = `[${time}] ${name}: ${JSON.stringify(detail)}`;
+    logEl.prepend(row);
+  }
+
+  el.addEventListener('digitalbridge-step', (e) => log('digitalbridge-step', e.detail));
+  el.addEventListener('digitalbridge-save', (e) => log('digitalbridge-save', e.detail));
+  el.addEventListener('digitalbridge-complete', (e) => log('digitalbridge-complete', e.detail));
+
+  // Flow toolbar
+  const flowBtns = [
+    { btn: document.getElementById('btn-flow-onboarding'), flow: 'onboarding' },
+    { btn: document.getElementById('btn-flow-job'), flow: 'job_apply' },
+    { btn: document.getElementById('btn-flow-employer'), flow: 'employer_accommodation' },
+  ];
+
+  flowBtns.forEach(({ btn, flow }) => {
+    btn.addEventListener('click', () => {
+      flowBtns.forEach((b) => b.btn.classList.remove('active'));
+      btn.classList.add('active');
+      el.setAttribute('flow', flow);
+      log('Set Flow', { flow });
+    });
+  });
+
+  // Language toolbar
+  const btnEn = document.getElementById('btn-lang-en');
+  const btnAm = document.getElementById('btn-lang-am');
+
+  btnEn.addEventListener('click', () => {
+    btnEn.classList.add('active');
+    btnAm.classList.remove('active');
+    el.setAttribute('lang', 'en');
+    log('Set Lang', { lang: 'en' });
+  });
+
+  btnAm.addEventListener('click', () => {
+    btnAm.classList.add('active');
+    btnEn.classList.remove('active');
+    el.setAttribute('lang', 'am');
+    log('Set Lang', { lang: 'am' });
+  });
+
+  // Low-Literacy toolbar
+  const btnLowLit = document.getElementById('btn-toggle-lowlit');
+  btnLowLit.addEventListener('click', () => {
+    const isLow = el.hasAttribute('low-literacy');
+    if (isLow) {
+      el.removeAttribute('low-literacy');
+      btnLowLit.classList.remove('active');
+      btnLowLit.textContent = 'Low-Literacy Mode: Off';
+      log('Set Low-Literacy', { enabled: false });
+    } else {
+      el.setAttribute('low-literacy', 'true');
+      btnLowLit.classList.add('active');
+      btnLowLit.textContent = 'Low-Literacy Mode: On';
+      log('Set Low-Literacy', { enabled: true });
+    }
+  });
+</script>
+
+</body>
+</html>
