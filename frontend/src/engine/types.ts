@@ -150,3 +150,25 @@ export interface EngineOptions {
   slots?: EngineSlots;
   stepsOverride?: FormStep[];
 }
+
+export type EngineEventType =
+  | 'init'
+  | 'step_change'
+  | 'answer_change'
+  | 'flow_change'
+  | 'language_change'
+  | 'low_literacy_toggle'
+  | 'validation_error'
+  | 'save_resume'
+  | 'submit'
+  | 'reset';
+
+export interface EngineEvent {
+  type: EngineEventType;
+  stepId?: string;
+  value?: StepAnswerValue;
+  errors?: Record<string, string>;
+}
+
+export type EngineSubscriber = (state: EngineState, event?: EngineEvent) => void;
+

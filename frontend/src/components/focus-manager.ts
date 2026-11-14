@@ -5,6 +5,8 @@
 export class FocusManager {
   private announcerEl: HTMLElement | null = null;
   private container: HTMLElement | ShadowRoot;
+  private lastFocusedStepId: string | null = null;
+  private lastFocusedFlow: string | null = null;
 
   constructor(container: HTMLElement | ShadowRoot) {
     this.container = container;
@@ -55,12 +57,45 @@ export class FocusManager {
   }
 
   /**
+   * Moves focus to the step heading on genuine step transition per FR-01.
+   * Only runs when stepId or flow actually changes, NEVER on value updates or typing.
+   */
+  public focusStepTransition(stepId: string, flow?: string, force = false): void {
+    const isDifferentStep = this.lastFocusedStepId !== stepId;
+    const isDifferentFlow = flow && this.lastFocusedFlow !== flow;
+
+    if (!force && !isDifferentStep && !isDifferentFlow) {
+      // User is on the same step - NEVER steal focus!
+      return;
+    }
+
+    this.lastFocusedStepId = stepId;
+    if (flow) {
+      this.lastFocusedFlow = flow;
+    }
+
+    this.focusStepHeading(stepId, force || isDifferentStep || Boolean(isDifferentFlow));
+  }
+
+  /**
    * Programmatically moves focus on step transition:
    * 1. First priority: The step heading (h2[tabindex="-1"])
    * 2. Fallback: The primary form input
+   * Guarded: Never steals focus from an active input if user is typing.
    */
-  public focusStepHeading(stepId: string): void {
+  public focusStepHeading(stepId: string, force = false): void {
     setTimeout(() => {
+      // Guard: If user is actively typing in an input/textarea inside container, NEVER steal focus
+      const activeEl = (this.container as any).activeElement || document.activeElement;
+      if (
+        !force &&
+        activeEl &&
+        (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA') &&
+        this.container.contains(activeEl)
+      ) {
+        return;
+      }
+
       // Target step heading first
       const heading = this.container.querySelector<HTMLElement>(
         `#heading-${stepId}, [data-step-heading]`
@@ -80,6 +115,14 @@ export class FocusManager {
         firstInput.focus();
       }
     }, 60);
+  }
+
+  /**
+   * Resets step tracking so the next step change is guaranteed to focus.
+   */
+  public resetStepTracking(): void {
+    this.lastFocusedStepId = null;
+    this.lastFocusedFlow = null;
   }
 
   /**

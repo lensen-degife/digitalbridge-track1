@@ -29,7 +29,7 @@ export function renderChoiceGroup(props: ChoiceRendererProps): HTMLElement {
 
   if (error) {
     const errorEl = document.createElement('div');
-    errorEl.className = 'db-hint';
+    errorEl.className = 'db-hint db-inline-error';
     errorEl.style.color = 'var(--db-error)';
     errorEl.style.fontWeight = '600';
     errorEl.textContent = error;

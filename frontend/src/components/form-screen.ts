@@ -1,5 +1,11 @@
 import type { FormEngine } from '../engine/state-machine';
-import type { EngineState, FormStep, LanguageCode } from '../engine/types';
+import type {
+  EngineState,
+  FormStep,
+  LanguageCode,
+  FlowType,
+  EngineEvent,
+} from '../engine/types';
 import { ICONS, getIconSvg } from './icons';
 import { FocusManager } from './focus-manager';
 import { renderErrorSummary } from './error-summary';
@@ -14,12 +20,59 @@ export interface FormScreenOptions {
   container: HTMLElement | ShadowRoot;
 }
 
+interface FocusCursorState {
+  activeId: string | null;
+  selectionStart: number | null;
+  selectionEnd: number | null;
+}
+
+function captureFocusState(root: HTMLElement | ShadowRoot): FocusCursorState {
+  const activeEl = (root as any).activeElement || document.activeElement;
+  if (
+    activeEl &&
+    (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')
+  ) {
+    return {
+      activeId: activeEl.id || null,
+      selectionStart: (activeEl as HTMLInputElement).selectionStart,
+      selectionEnd: (activeEl as HTMLInputElement).selectionEnd,
+    };
+  }
+  return { activeId: null, selectionStart: null, selectionEnd: null };
+}
+
+function restoreFocusState(
+  root: HTMLElement | ShadowRoot,
+  saved: FocusCursorState
+): void {
+  if (!saved.activeId) return;
+  const el = root.querySelector<HTMLInputElement | HTMLTextAreaElement>(
+    `#${saved.activeId}`
+  );
+  if (el) {
+    el.focus();
+    if (saved.selectionStart !== null && saved.selectionEnd !== null) {
+      try {
+        el.setSelectionRange(saved.selectionStart, saved.selectionEnd);
+      } catch {
+        // Ignored if element type doesn't support setSelectionRange
+      }
+    }
+  }
+}
+
 export class FormScreen {
   private engine: FormEngine;
   private root: HTMLElement | ShadowRoot;
   private focusManager: FocusManager;
   private unsubscribeEngine?: () => void;
-  private previousStepId: string | null = null;
+
+  private currentRenderedStepId: string | null = null;
+  private currentRenderedFlow: FlowType | null = null;
+  private currentRenderedLanguage: LanguageCode | null = null;
+  private currentRenderedLowLiteracy: boolean | null = null;
+  private currentRenderedIsSubmitted = false;
+  private isMounted = false;
 
   constructor(options: FormScreenOptions) {
     this.engine = options.engine;
@@ -30,8 +83,8 @@ export class FormScreen {
   }
 
   private init(): void {
-    this.unsubscribeEngine = this.engine.subscribe((state) => {
-      this.render(state);
+    this.unsubscribeEngine = this.engine.subscribe((state, event) => {
+      this.render(state, event);
     });
   }
 
@@ -41,8 +94,148 @@ export class FormScreen {
     }
   }
 
-  public render(state: EngineState): void {
-    // Clear root container
+  /**
+   * Main render method.
+   * Decouples value updates from full DOM re-renders:
+   * - If only a field value/answer changed on the current step, update in-place without touching input DOM.
+   * - Only performs full render on actual step transitions, flow changes, language switches, or mode toggles.
+   */
+  public render(state: EngineState, event?: EngineEvent): void {
+    const isAm = state.language === 'am';
+    const step = state.currentStep;
+
+    const isStructuralChange =
+      !this.isMounted ||
+      this.currentRenderedStepId !== step.stepId ||
+      this.currentRenderedFlow !== state.flow ||
+      this.currentRenderedLanguage !== state.language ||
+      this.currentRenderedLowLiteracy !== state.lowLiteracyMode ||
+      this.currentRenderedIsSubmitted !== state.isSubmitted;
+
+    // Fast path: In-place update when user is typing or value changes on the same step
+    if (!isStructuralChange && event?.type === 'answer_change') {
+      this.updatePartial(state, event);
+      return;
+    }
+
+    // Fast path: In-place update for save/resume status changes
+    if (!isStructuralChange && event?.type === 'save_resume') {
+      this.updateStatusBar(state);
+      return;
+    }
+
+    // Fast path: In-place error banner updates if step didn't change
+    if (!isStructuralChange && event?.type === 'validation_error') {
+      this.updateErrorSummary(state);
+      return;
+    }
+
+    // General non-structural update
+    if (!isStructuralChange && this.isMounted) {
+      this.updatePartial(state, event);
+      return;
+    }
+
+    // Structural render: preserve active focus and cursor positions before destroying DOM
+    const focusState = captureFocusState(this.root);
+    const wasStepChange =
+      this.currentRenderedStepId !== step.stepId ||
+      this.currentRenderedFlow !== state.flow;
+
+    this.renderFull(state);
+
+    this.currentRenderedStepId = step.stepId;
+    this.currentRenderedFlow = state.flow;
+    this.currentRenderedLanguage = state.language;
+    this.currentRenderedLowLiteracy = state.lowLiteracyMode;
+    this.currentRenderedIsSubmitted = state.isSubmitted;
+    this.isMounted = true;
+
+    if (wasStepChange) {
+      // Genuine step transition per FR-01: Move focus to step heading & announce to screen reader
+      this.focusManager.focusStepTransition(step.stepId, state.flow);
+      const promptText = state.lowLiteracyMode
+        ? step.simpleLabel[state.language]
+        : step.label[state.language];
+      this.focusManager.announce(
+        isAm
+          ? `ጥያቄ ${state.currentStepIndex + 1} ከ ${state.totalSteps}። ${promptText}`
+          : `Step ${state.currentStepIndex + 1} of ${state.totalSteps}. ${promptText}`
+      );
+    } else {
+      // Language toggle or mode toggle on same step: Restore previous focus and cursor
+      restoreFocusState(this.root, focusState);
+    }
+  }
+
+  /**
+   * Lightweight in-place update for field value changes without destroying any inputs.
+   */
+  private updatePartial(state: EngineState, event?: EngineEvent): void {
+    this.updateStatusBar(state);
+    this.updateErrorSummary(state);
+
+    // Sync input value only if changed externally (e.g. voice input) and not currently being typed in
+    if (event?.stepId && typeof event.value === 'string') {
+      const activeEl = (this.root as any).activeElement || document.activeElement;
+      const inputEl = this.root.querySelector<HTMLInputElement>(`#input-${event.stepId}`);
+      if (inputEl && inputEl !== activeEl && inputEl.value !== event.value) {
+        inputEl.value = event.value;
+      }
+    }
+  }
+
+  private updateStatusBar(state: EngineState): void {
+    const isAm = state.language === 'am';
+
+    const autoSaveBadge = this.root.querySelector('.db-status-saved');
+    if (autoSaveBadge) {
+      autoSaveBadge.innerHTML = `<span>✓</span> <span>${
+        isAm
+          ? state.lastSavedAt
+            ? `የተቀመጠው፦ ${new Date(state.lastSavedAt).toLocaleTimeString()}`
+            : 'ራስ-ሰር ይቀመጣል'
+          : state.lastSavedAt
+          ? `Auto-saved at ${new Date(state.lastSavedAt).toLocaleTimeString()}`
+          : 'Auto-saved locally'
+      }</span>`;
+    }
+
+    const saveBtn = this.root.querySelector<HTMLButtonElement>('.db-btn-save span');
+    if (saveBtn) {
+      saveBtn.textContent = state.isSaving
+        ? isAm ? 'እየተቀመጠ...' : 'Saving...'
+        : isAm ? 'ቆይቼ እቀጥላለሁ' : 'Save & Resume Later';
+    }
+  }
+
+  private updateErrorSummary(state: EngineState): void {
+    const errorSlot = this.root.querySelector('.db-error-slot');
+    if (!errorSlot) return;
+
+    const errorCount = Object.keys(state.errors).length;
+    if (errorCount === 0) {
+      errorSlot.innerHTML = '';
+      const invalidEls = this.root.querySelectorAll('[aria-invalid="true"]');
+      invalidEls.forEach((el) => el.removeAttribute('aria-invalid'));
+      const inlineErrors = this.root.querySelectorAll('.db-inline-error');
+      inlineErrors.forEach((el) => el.remove());
+    } else {
+      errorSlot.innerHTML = '';
+      const summaryEl = renderErrorSummary({
+        errors: state.errors,
+        language: state.language,
+      });
+      if (summaryEl) {
+        errorSlot.appendChild(summaryEl);
+      }
+    }
+  }
+
+  /**
+   * Full render of the form screen.
+   */
+  private renderFull(state: EngineState): void {
     let container = this.root.querySelector('.db-container') as HTMLElement;
     if (!container) {
       container = document.createElement('div');
@@ -57,8 +250,6 @@ export class FormScreen {
 
     const isAm = state.language === 'am';
     const step = state.currentStep;
-    const isStepChange = this.previousStepId !== step.stepId;
-    this.previousStepId = step.stepId;
 
     // 1. Skip to Content Link (A11y)
     const skipLink = document.createElement('a');
@@ -67,7 +258,7 @@ export class FormScreen {
     skipLink.textContent = isAm ? 'ወደ ጥያቄው በቀጥታ ይለፉ' : 'Skip to question';
     skipLink.addEventListener('click', (e) => {
       e.preventDefault();
-      this.focusManager.focusStepHeading(step.stepId);
+      this.focusManager.focusStepHeading(step.stepId, true);
     });
     container.appendChild(skipLink);
 
@@ -83,7 +274,7 @@ export class FormScreen {
     const headerActions = document.createElement('div');
     headerActions.className = 'db-header-actions';
 
-    // Member 2 Slot or Standalone Fallback: Language Toggle
+    // Language Toggle
     const slots = this.engine.getSlots();
     let langToggleEl: HTMLElement | null = null;
     if (slots.renderLanguageToggle) {
@@ -138,7 +329,7 @@ export class FormScreen {
     header.appendChild(headerActions);
     container.appendChild(header);
 
-    // If form is already submitted, show completion confirmation
+    // If form is submitted, render completion card
     if (state.isSubmitted) {
       container.appendChild(this.renderCompletionScreen(state));
       return;
@@ -218,7 +409,7 @@ export class FormScreen {
     }
     titleWrap.appendChild(heading);
 
-    // Read-Aloud Trigger Button (Member 2 slot or Web Speech fallback)
+    // Read-Aloud Trigger Button
     const readAloudWrap = document.createElement('div');
     readAloudWrap.className = 'db-read-aloud-wrap';
 
@@ -248,14 +439,17 @@ export class FormScreen {
     stepHeader.appendChild(titleWrap);
     stepCard.appendChild(stepHeader);
 
-    // Error Summary Banner (WCAG 3.3.1)
+    // Dedicated Error Summary Slot (allows in-place updates)
+    const errorSlot = document.createElement('div');
+    errorSlot.className = 'db-error-slot';
     const errorSummaryEl = renderErrorSummary({
       errors: state.errors,
       language: state.language,
     });
     if (errorSummaryEl) {
-      stepCard.appendChild(errorSummaryEl);
+      errorSlot.appendChild(errorSummaryEl);
     }
+    stepCard.appendChild(errorSlot);
 
     // Step Type Renderer
     const activeRenderer = this.renderStepInput(step, state);
@@ -336,16 +530,6 @@ export class FormScreen {
     statusBar.appendChild(noTimeoutBadge);
 
     container.appendChild(statusBar);
-
-    // Focus management on step transition
-    if (isStepChange) {
-      this.focusManager.focusStepHeading(step.stepId);
-      this.focusManager.announce(
-        isAm
-          ? `ጥያቄ ${state.currentStepIndex + 1} ከ ${state.totalSteps}። ${promptText}`
-          : `Step ${state.currentStepIndex + 1} of ${state.totalSteps}. ${promptText}`
-      );
-    }
   }
 
   private renderStepInput(step: FormStep, state: EngineState): HTMLElement {
